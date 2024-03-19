@@ -1,6 +1,9 @@
 package fr.isen.sayer.androiderestaurant
 
+import CartItem
+import CartManager
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -24,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.pager.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -38,8 +42,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalConfiguration
 import coil.compose.rememberImagePainter
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalContext
 
 class DishDetailActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -64,13 +70,17 @@ fun DishDetailScreen(dish: MenuItem) {
 
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     val horizontalPadding = screenWidth * 0.10f
+    val context = LocalContext.current
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(text = "DroidRestaurant", color = Color.White) },
                 actions = {
-                    IconButton(onClick = { /* TODO: handle navigation to cart */ }) {
+                    IconButton(onClick = {
+                        val intent = Intent(context, CartActivity::class.java)
+                        context.startActivity(intent)
+                    }) {
                         Icon(Icons.Filled.ShoppingCart, contentDescription = "Panier", tint = Color.White)
                     }
                 },
@@ -126,12 +136,31 @@ fun DishDetailScreen(dish: MenuItem) {
                 quantity = quantity,
                 onQuantityChange = { newQuantity -> quantity = newQuantity })
 
+            val cartManager = CartManager(LocalContext.current)
+
             val totalPrice = quantity * (dish.prices.firstOrNull()?.price?.toFloatOrNull() ?: 0f)
-            Button(
-                onClick = { /* TODO: handle add to cart */ },
-                modifier = Modifier.padding(top = 16.dp),
-            ) {
-                Text(text = "Ajouter au panier - $totalPrice €")
+            var showDialog by remember { mutableStateOf(false) }
+
+            if (showDialog) {
+                AlertDialog(
+                    onDismissRequest = { showDialog = false },
+                    title = { Text("Panier") },
+                    text = { Text("Article ajouté au panier.") },
+                    confirmButton = {
+                        Button(onClick = { showDialog = false }) {
+                            Text("OK")
+                        }
+                    }
+                )
+            }
+
+            // Modifier le onClick du bouton pour déclencher l'AlertDialog
+            Button(onClick = {
+                val cartItem = CartItem(dish.id, dish.name_fr, quantity, totalPrice)
+                cartManager.addToCart(cartItem)
+                showDialog = true  // Affiche l'AlertDialog
+            }) {
+                Text("Ajouter au panier - $totalPrice €")
             }
         }
     }

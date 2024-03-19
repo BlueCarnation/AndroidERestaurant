@@ -34,4 +34,3 @@ data class CartItem(
     val quantity: Int,
     val price: Float
 )
-

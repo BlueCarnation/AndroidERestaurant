@@ -21,4 +21,5 @@
         <!-- Ajoutez d'autres desserts ici -->
     </string-array>
     <string name="title_activity_dish_detail">DishDetailActivity</string>
+    <string name="title_activity_cart">CartActivity</string>
 </resources>
