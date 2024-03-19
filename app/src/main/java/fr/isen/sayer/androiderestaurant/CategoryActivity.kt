@@ -26,13 +26,18 @@ import android.content.Context
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.platform.LocalContext
 import android.util.Log
-import com.android.volley.Request
 import com.android.volley.Response
 import com.android.volley.toolbox.StringRequest
 import com.android.volley.toolbox.Volley
 import org.json.JSONObject
 import com.google.gson.Gson
+import androidx.compose.foundation.layout.*
+import androidx.compose.ui.layout.ContentScale
 import fr.isen.sayer.androiderestaurant.ui.theme.AndroidERestaurantTheme
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.android.volley.Cache
+import androidx.compose.runtime.*
 
 class CategoryActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -46,18 +51,13 @@ class CategoryActivity : ComponentActivity() {
             dishes.clear()
             dishes.addAll(items)
             // Force Compose à recomposer avec les nouvelles données
-            setContent {
-                AndroidERestaurantTheme {
-                    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                        CategoryScreen(categoryName, dishes.map { it.name_fr })
+            runOnUiThread {
+                setContent {
+                    AndroidERestaurantTheme {
+                        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                            CategoryScreen(categoryName, dishes, this@CategoryActivity)
+                        }
                     }
-                }
-            }
-        }
-        setContent {
-            AndroidERestaurantTheme {
-                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    CategoryScreen(categoryName, dishes.map { it.name_fr })
                 }
             }
         }
@@ -65,7 +65,7 @@ class CategoryActivity : ComponentActivity() {
 }
 
 @Composable
-fun CategoryScreen(categoryName: String, dishes: List<String>, context: Context = LocalContext.current) {
+fun CategoryScreen(categoryName: String, dishes: List<MenuItem>, context: Context = LocalContext.current) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -80,48 +80,89 @@ fun CategoryScreen(categoryName: String, dishes: List<String>, context: Context 
             style = MaterialTheme.typography.headlineLarge
         )
         Spacer(modifier = Modifier.height(16.dp))
-
-        // Composable LazyColumn pour afficher une liste
         LazyColumn {
             items(dishes) { dish ->
-                DishItem(dish, onClick = {
-                    // Intent pour démarrer DishDetailActivity avec le nom du plat en extra
-                    val intent = Intent(context, DishDetailActivity::class.java)
-                    intent.putExtra("dishName", dish)
-                    context.startActivity(intent)
-                })
+                DishItem(dish, context)
             }
         }
     }
 }
 
 @Composable
-fun DishItem(dishName: String, onClick: () -> Unit) {
-    Text(
-        text = dishName,
+fun DishItem(dish: MenuItem, context: Context) {
+    // Choix de l'URL de l'image : essaie la 2ème image si disponible, sinon prend la première.
+    val imageUrl = if (dish.images.size > 1) dish.images[1] else dish.images.firstOrNull() ?: ""
+
+    Row(
         modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(16.dp),
-        style = MaterialTheme.typography.bodyLarge
-    )
+            .clickable {
+                val intent = Intent(context, DishDetailActivity::class.java).apply {
+                    // En passant l'objet complet 'dish' à DishDetailActivity.
+                    // Assurez-vous que MenuItem implémente Parcelable ou Serializable.
+                    putExtra("dishDetail", dish)
+                }
+                context.startActivity(intent)
+            }
+            .padding(8.dp)
+            .fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Log.v("DishItem", "Loading image: $imageUrl")
+        AsyncImage(
+            model = ImageRequest.Builder(context)
+                .data(imageUrl)
+                .crossfade(true)
+                .error(R.drawable.error_image) // Image d'erreur
+                .placeholder(R.drawable.placeholder) // Image de chargement
+                .build(),
+            contentDescription = "Image of ${dish.name_fr}",
+            modifier = Modifier.size(88.dp),
+            contentScale = ContentScale.Crop
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Column {
+            Text(
+                text = dish.name_fr,
+                style = MaterialTheme.typography.bodyLarge
+            )
+            Text(
+                text = "Prix: ${dish.prices.firstOrNull()?.price ?: "N/A"} €",
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+    }
 }
 
 fun fetchMenuData(context: Context, categoryName: String, updateUI: (List<MenuItem>) -> Unit) {
     val queue = Volley.newRequestQueue(context)
     val url = "http://test.api.catering.bluecodegames.com/menu"
 
-    val postData = JSONObject()
-    try {
-        postData.put("id_shop", "1")
-    } catch (e: Exception) {
-        e.printStackTrace()
+    val cacheKey = "menu_$categoryName"
+    val cacheEntry = queue.cache[cacheKey]
+
+    if (cacheEntry != null) {
+        try {
+            val jsonString = String(cacheEntry.data, Charsets.UTF_8)
+            val menuResponse = Gson().fromJson(jsonString, MenuResponse::class.java)
+            val categoryItems = menuResponse.data.find { it.name_fr == categoryName }?.items ?: listOf()
+            updateUI(categoryItems)
+            return
+        } catch (e: Exception) {
+            Log.e("CacheError", "Error parsing cache response", e)
+        }
     }
 
-    val stringRequest = object : StringRequest(Request.Method.POST, url,
+    val postData = JSONObject().apply {
+        put("id_shop", "1")
+    }
+
+    val stringRequest = object : StringRequest(Method.POST, url,
         Response.Listener<String> { response ->
-            val gson = Gson()
-            val menuResponse = gson.fromJson(response, MenuResponse::class.java)
+            queue.cache.put(cacheKey, Cache.Entry().apply {
+                data = response.toByteArray(Charsets.UTF_8)
+            })
+
+            val menuResponse = Gson().fromJson(response, MenuResponse::class.java)
             val categoryItems = menuResponse.data.find { it.name_fr == categoryName }?.items ?: listOf()
             updateUI(categoryItems)
         },
@@ -140,3 +181,5 @@ fun fetchMenuData(context: Context, categoryName: String, updateUI: (List<MenuIt
 
     queue.add(stringRequest)
 }
+
+
