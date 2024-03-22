@@ -7,13 +7,16 @@ class CartManager(private val context: Context) {
     private val fileName = "cart.json"
     private val gson = Gson()
 
+    var onCartChanged: (() -> Unit)? = null
+
     fun addToCart(item: CartItem) {
         val cart = getCartItems().toMutableList()
         cart.add(item)
         saveCartToFile(cart)
+        onCartChanged?.invoke()
     }
 
-    private fun getCartItems(): List<CartItem> {
+    fun getCartItems(): List<CartItem> {
         val file = File(context.filesDir, fileName)
         if (!file.exists()) {
             return emptyList()
@@ -25,6 +28,27 @@ class CartManager(private val context: Context) {
     private fun saveCartToFile(cart: List<CartItem>) {
         val file = File(context.filesDir, fileName)
         file.writeText(gson.toJson(cart))
+    }
+
+    fun getTotalItemCount(): Int {
+        return getCartItems().sumOf { it.quantity }
+    }
+
+    fun removeFromCart(itemId: String) {
+        val cart = getCartItems().toMutableList()
+        cart.removeAll { it.id == itemId }
+        saveCartToFile(cart)
+        onCartChanged?.invoke()
+    }
+
+    fun clearCart() {
+        saveCartToFile(emptyList())
+        onCartChanged?.invoke()
+    }
+
+    fun getTotalPrice(): Float {
+        val cartItems = getCartItems()
+        return cartItems.sumOf { (it.price * it.quantity).toInt() }.toFloat()
     }
 }
 

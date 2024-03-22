@@ -26,36 +26,51 @@ import android.content.Context
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.platform.LocalContext
 import android.util.Log
+import androidx.compose.foundation.Image
 import com.android.volley.Response
 import com.android.volley.toolbox.StringRequest
 import com.android.volley.toolbox.Volley
 import org.json.JSONObject
 import com.google.gson.Gson
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material3.Divider
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import fr.isen.sayer.androiderestaurant.ui.theme.AndroidERestaurantTheme
 import coil.compose.AsyncImage
+import coil.compose.rememberImagePainter
 import coil.request.ImageRequest
 import com.android.volley.Cache
-import androidx.compose.runtime.*
 
 class CategoryActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val categoryName = intent.getStringExtra("categoryName") ?: return
-
-        // Initialement, les plats sont vides jusqu'à ce que la réponse soit reçue
         val dishes = mutableListOf<MenuItem>()
 
         fetchMenuData(this, categoryName) { items ->
             dishes.clear()
             dishes.addAll(items)
-            // Force Compose à recomposer avec les nouvelles données
             runOnUiThread {
                 setContent {
                     AndroidERestaurantTheme {
                         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                            CategoryScreen(categoryName, dishes, this@CategoryActivity)
+                            CategoryScreen(categoryName, dishes, this@CategoryActivity) {
+                                finish()
+                            }
                         }
                     }
                 }
@@ -64,71 +79,108 @@ class CategoryActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CategoryScreen(categoryName: String, dishes: List<MenuItem>, context: Context = LocalContext.current) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(top = 32.dp),
-        verticalArrangement = Arrangement.Top,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = categoryName,
-            color = Color(0xFFFFA500),
-            fontSize = 26.sp,
-            style = MaterialTheme.typography.headlineLarge
-        )
+fun CategoryScreen(categoryName: String, dishes: List<MenuItem>, context: Context = LocalContext.current, navigateBack: () -> Unit) {
+    Column {
+        Box(modifier = Modifier
+            .fillMaxWidth()
+            .height(200.dp)) {
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(getImageForCategory(categoryName))
+                    .build(),
+                contentDescription = "Category Image",
+                modifier = Modifier.fillMaxWidth(),
+                contentScale = ContentScale.Crop
+            )
+            IconButton(onClick = { navigateBack() }, modifier = Modifier.align(Alignment.TopStart)) {
+                Icon(
+                    Icons.Filled.ArrowBack,
+                    "Retour",
+                    modifier = Modifier.size(30.dp), // Augmentez la taille ici
+                    tint = Color.White
+                )
+            }
+            Text(
+                text = categoryName,
+                color = Color.White,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.ExtraBold,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(16.dp)
+            )
+        }
+
         Spacer(modifier = Modifier.height(16.dp))
+
+        // Reste du contenu comme avant
         LazyColumn {
-            items(dishes) { dish ->
-                DishItem(dish, context)
+            itemsIndexed(dishes) { index, dish ->
+                DishItem(dish, context, index == dishes.lastIndex)
             }
         }
     }
 }
 
-@Composable
-fun DishItem(dish: MenuItem, context: Context) {
-    // Choix de l'URL de l'image : essaie la 2ème image si disponible, sinon prend la première.
-    val imageUrl = if (dish.images.size > 1) dish.images[1] else dish.images.firstOrNull() ?: ""
+fun getImageForCategory(categoryName: String): Int {
+    // Remplacez ces URL par les chemins de vos images réelles
+    return when(categoryName) {
+        "Entrées" -> R.drawable.entree
+        "Plats" -> R.drawable.plats
+        "Desserts" -> R.drawable.dessert
+        else -> R.drawable.error_image
+    }
+}
 
-    Row(
-        modifier = Modifier
-            .clickable {
-                val intent = Intent(context, DishDetailActivity::class.java).apply {
-                    // En passant l'objet complet 'dish' à DishDetailActivity.
-                    // Assurez-vous que MenuItem implémente Parcelable ou Serializable.
-                    putExtra("dishDetail", dish)
-                }
-                context.startActivity(intent)
+@Composable
+fun DishItem(dish: MenuItem, context: Context, isLastItem: Boolean) {
+    val imageUrl = dish.images.getOrNull(1) ?: dish.images.firstOrNull() ?: ""
+
+    Column(modifier = Modifier
+        .fillMaxWidth()
+        .clickable { // Rendre toute la colonne cliquable
+            val intent = Intent(context, DishDetailActivity::class.java).apply {
+                putExtra("dishDetail", dish)
             }
-            .padding(8.dp)
-            .fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Log.v("DishItem", "Loading image: $imageUrl")
-        AsyncImage(
-            model = ImageRequest.Builder(context)
-                .data(imageUrl)
-                .crossfade(true)
-                .error(R.drawable.error_image) // Image d'erreur
-                .placeholder(R.drawable.placeholder) // Image de chargement
-                .build(),
-            contentDescription = "Image of ${dish.name_fr}",
-            modifier = Modifier.size(88.dp),
-            contentScale = ContentScale.Crop
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Column {
-            Text(
-                text = dish.name_fr,
-                style = MaterialTheme.typography.bodyLarge
+            context.startActivity(intent)
+        }
+        .padding(start = 16.dp, end = 8.dp, top = 8.dp)) {
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(imageUrl)
+                    .crossfade(true)
+                    .error(R.drawable.error_image)
+                    .placeholder(R.drawable.placeholder)
+                    .build(),
+                contentDescription = "Image of ${dish.name_fr}",
+                modifier = Modifier
+                    .size(88.dp)
+                    .clip(RoundedCornerShape(10.dp)), // Arrondit les bords de l'image
+                contentScale = ContentScale.Crop
             )
-            Text(
-                text = "Prix: ${dish.prices.firstOrNull()?.price ?: "N/A"} €",
-                style = MaterialTheme.typography.bodySmall
-            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Column(modifier = Modifier.padding(end = 16.dp)) { // Ajout de padding à droite pour l'alignement
+                Text(
+                    text = dish.name_fr,
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Text(
+                    text = "Prix: ${dish.prices.firstOrNull()?.price ?: "N/A"} €",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+
+        // Conditionnellement ajouter un Divider avec un espacement avant et après
+        if (!isLastItem) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Divider(color = Color.LightGray, thickness = 1.dp)
+            Spacer(modifier = Modifier.height(8.dp)) // Ajouter de l'espace après le Divider
         }
     }
 }
